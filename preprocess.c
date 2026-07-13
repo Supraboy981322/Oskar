@@ -807,7 +807,7 @@ static Token *include_file(Token *tok, char *path, Token *filename_tok) {
 
   Token *tok2 = tokenize_file(path);
   if (!tok2)
-    error_tok(filename_tok, "%s: cannot open file: %s", path, strerror(errno));
+    error_tok(filename_tok, "%s: cannot open include file: %s", path, strerror(errno));
 
   guard_name = detect_include_guard(tok2);
   if (guard_name)

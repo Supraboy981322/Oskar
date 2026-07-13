@@ -18,6 +18,7 @@ static bool opt_MP;
 static bool opt_S;
 static bool opt_c;
 static bool opt_cc1;
+static bool opt_verbose;
 static bool opt_hash_hash_hash;
 static bool opt_static;
 static bool opt_shared;
@@ -55,10 +56,25 @@ static void add_default_include_paths(char *argv0) {
   // to ./include relative to argv[0].
   strarray_push(&include_paths, format("%s/include", dirname(strdup(argv0))));
 
-  // Add standard include paths.
+  // Add standard include paths. (it's not that hard to read $CPATH)
   strarray_push(&include_paths, "/usr/local/include");
   strarray_push(&include_paths, "/usr/include/x86_64-linux-gnu");
   strarray_push(&include_paths, "/usr/include");
+
+  char* cpath = getenv("CPATH");
+  if (cpath) {
+    int start = 0;
+    int p_len = strlen(cpath);
+    for (int i = 0; i < p_len; i++) {
+      if (cpath[i] == ':') {
+        cpath[i] = 0;
+        strarray_push(&include_paths, cpath+start);
+        start = i+1;
+      }
+    }
+    if (start < p_len)
+      strarray_push(&include_paths, cpath+start);
+  }
 
   // Keep a copy of the standard include paths for -MMD option.
   for (int i = 0; i < include_paths.len; i++)
@@ -134,6 +150,11 @@ static void parse_args(int argc, char **argv) {
 
     if (!strcmp(argv[i], "--help"))
       usage(0);
+
+    if (!strcmp(argv[i], "-verbose")) {
+      opt_verbose = true;
+      continue;
+    }
 
     if (!strcmp(argv[i], "-o")) {
       opt_o = argv[++i];
@@ -588,28 +609,79 @@ bool file_exists(char *path) {
   return !stat(path, &st);
 }
 
+char* tryLibPathEnv(char* envvar, char* file) {
+  int raw_len = strlen(envvar);
+  envvar[raw_len] = ':';
+  int file_len = strlen(file);
+  char* buf = malloc(raw_len+file_len+1); //includes len of "/" + strlen(file)
+  buf[raw_len+file_len] = 0;
+  int start = 0;
+  for (int i = 0; i <= raw_len; i++) {
+    if (envvar[i] == ':') goto try_sect;
+    continue;
+    try_sect: {
+      memcpy(buf, envvar+start, i-start);
+      memcpy(buf+i-start+1, file, file_len);
+      buf[i-start] = '/';
+      buf[i-start+file_len+1] = 0;
+      if (find_file(buf)) {
+        buf[i-start] = '/';
+        char *res = malloc(i-start+1);
+        memcpy(res, buf, i-start+1);
+        free(buf);
+        printf("just memcpy: %s\n", res);
+        envvar[raw_len] = 0;
+        return res;
+      } else
+        printf("%s is not in %s", file, buf);
+      start = i+1;
+      if (i == raw_len-1) break;
+    }
+  }
+  free(buf);
+  envvar[raw_len] = 0;
+  return NULL;
+}
+
+//ugh... hard coded paths? (rookie)
 static char *find_libpath(void) {
-  if (file_exists("/usr/lib/x86_64-linux-gnu/crti.o"))
-    return "/usr/lib/x86_64-linux-gnu";
-  if (file_exists("/usr/lib64/crti.o"))
-    return "/usr/lib64";
-  error("library path is not found");
+  char* libpath = getenv("LIBRARY_PATH");
+  if (libpath == NULL) {
+    puts("LIBRARY_PATH not set");
+    if (file_exists("/usr/lib/x86_64-linux-gnu/crti.o"))
+      return "/usr/lib/x86_64-linux-gnu";
+    if (file_exists("/usr/lib64/crti.o"))
+      return "/usr/lib64";
+    error("library path is not found");
+  }
+
+  char* match = tryLibPathEnv(libpath, "crti.o");
+  if (match == NULL)
+    error("library path is not found");
+  puts("found crti.o");
+  char* duped = strdup(dirname(match));
+  free(match);
+  return duped;
 }
 
 static char *find_gcc_libpath(void) {
-  char *paths[] = {
-    "/usr/lib/gcc/x86_64-linux-gnu/*/crtbegin.o",
-    "/usr/lib/gcc/x86_64-pc-linux-gnu/*/crtbegin.o", // For Gentoo
-    "/usr/lib/gcc/x86_64-redhat-linux/*/crtbegin.o", // For Fedora
-  };
+  char* ld_path = getenv("LD_LIBRARY_PATH");
+  if (ld_path != NULL) {
+    char* match = tryLibPathEnv(ld_path, "crtbegin.o");
+    if (match != NULL) {
+      printf("found crtbegin.o (dirname: %s)\n", match);
+      return match;
+    }
+  } else
+    fputs("LD_LIBRARY_PATH not set", stderr);
 
-  for (int i = 0; i < sizeof(paths) / sizeof(*paths); i++) {
-    char *path = find_file(paths[i]);
-    if (path)
-      return dirname(path);
+  char* hardcoded = "/usr/lib/gcc/*/crtbegin.o";
+  char* path = find_file(hardcoded);
+  if (path) {
+    puts("found crtbegin.o");
+    return strdup(dirname(path));
   }
-
-  error("gcc library path is not found");
+  error("gcc library path (where 'crtbegin.o' is) is not found");
 }
 
 static void run_linker(StringArray *inputs, char *output) {
@@ -643,6 +715,20 @@ static void run_linker(StringArray *inputs, char *output) {
   strarray_push(&arr, "-L/usr/lib");
   strarray_push(&arr, "-L/lib");
 
+  char* library_path = getenv("LIBRARY_PATH");
+  if (library_path) {
+    int start = 0;
+    for (int i = 0; i < strlen(library_path); i++) {
+      if (library_path[i] == ':' && start < i) {
+        library_path[i] = 0;
+        strarray_push(&arr, format("-L%s", library_path+start));
+        start = i+1;
+      }
+    }
+    if (start < strlen(library_path))
+      strarray_push(&arr, format("-L%s", library_path+start));
+  }
+
   if (!opt_static) {
     strarray_push(&arr, "-dynamic-linker");
     strarray_push(&arr, "/lib64/ld-linux-x86-64.so.2");
@@ -675,6 +761,15 @@ static void run_linker(StringArray *inputs, char *output) {
 
   strarray_push(&arr, format("%s/crtn.o", libpath));
   strarray_push(&arr, NULL);
+
+  puts("about to run:");
+  for (int i = 0; i < arr.len; i++) if (arr.data[i]) {
+    printf("\t%s %c\n", arr.data[i], (arr.data[i+1]) ? '\\' : ' ');
+  }
+  puts("\n");
+
+  free(libpath);
+  free(gcc_libpath);
 
   run_subprocess(arr.data);
 }
