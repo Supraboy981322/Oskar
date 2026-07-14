@@ -625,15 +625,13 @@ char* tryLibPathEnv(char* envvar, char* file) {
       buf[i-start] = '/';
       buf[i-start+file_len+1] = 0;
       if (find_file(buf)) {
-        buf[i-start] = '/';
         char *res = malloc(i-start+1);
-        memcpy(res, buf, i-start+1);
+        memcpy(res, buf, i-start);
         free(buf);
-        printf("just memcpy: %s\n", res);
         envvar[raw_len] = 0;
+        res[i-start] = 0;
         return res;
-      } else
-        printf("%s is not in %s", file, buf);
+      }
       start = i+1;
       if (i == raw_len-1) break;
     }
@@ -646,41 +644,33 @@ char* tryLibPathEnv(char* envvar, char* file) {
 //ugh... hard coded paths? (rookie)
 static char *find_libpath(void) {
   char* libpath = getenv("LIBRARY_PATH");
-  if (libpath == NULL) {
-    puts("LIBRARY_PATH not set");
+  if (!libpath) goto hardcoded;
+
+  char* match = tryLibPathEnv(libpath, "crti.o");
+  if (!match) goto hardcoded;
+  return match;
+
+  hardcoded: {
+    fputs("LIBRARY_PATH not set", stderr);
     if (file_exists("/usr/lib/x86_64-linux-gnu/crti.o"))
       return "/usr/lib/x86_64-linux-gnu";
     if (file_exists("/usr/lib64/crti.o"))
       return "/usr/lib64";
     error("library path is not found");
   }
-
-  char* match = tryLibPathEnv(libpath, "crti.o");
-  if (match == NULL)
-    error("library path is not found");
-  puts("found crti.o");
-  char* duped = strdup(dirname(match));
-  free(match);
-  return duped;
 }
 
 static char *find_gcc_libpath(void) {
   char* ld_path = getenv("LD_LIBRARY_PATH");
   if (ld_path != NULL) {
     char* match = tryLibPathEnv(ld_path, "crtbegin.o");
-    if (match != NULL) {
-      printf("found crtbegin.o (dirname: %s)\n", match);
-      return match;
-    }
+    if (match) return match;
   } else
     fputs("LD_LIBRARY_PATH not set", stderr);
 
   char* hardcoded = "/usr/lib/gcc/*/crtbegin.o";
   char* path = find_file(hardcoded);
-  if (path) {
-    puts("found crtbegin.o");
-    return strdup(dirname(path));
-  }
+  if (path) return strdup(dirname(path));
   error("gcc library path (where 'crtbegin.o' is) is not found");
 }
 
