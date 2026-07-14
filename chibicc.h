@@ -457,3 +457,13 @@ extern StringArray include_paths;
 extern bool opt_fpic;
 extern bool opt_fcommon;
 extern char *base_file;
+
+
+//
+//some helpers
+//
+
+#define todo(str) do{\
+  fputs(str"\n", stderr);\
+  abort();\
+}while (0)
