@@ -880,6 +880,7 @@ static Token *preprocess2(Token *tok) {
 
     if (equal(tok, "web_include")) {
       bool is_dquote;
+      Token *previous = tok;
       char *url = read_include_filename(&tok, tok->next, &is_dquote);
 
       char *protocol = NULL;
@@ -891,7 +892,7 @@ static Token *preprocess2(Token *tok) {
         url[i] = ':';
         break;
       }
-      if (!protocol) error_tok(tok, "invalid url");
+      if (!protocol) error_tok(previous, "invalid url");
 
       printf("(include_url) fetching |%s|\n", url);
       
@@ -929,7 +930,7 @@ static Token *preprocess2(Token *tok) {
         curl_easy_cleanup(curl);
         fclose(tmp);
         remove(filename);
-        error_tok(tok, "possibly invalid url");
+        error_tok(previous, "possibly invalid url");
         abort();
       }
       rewind(tmp);
