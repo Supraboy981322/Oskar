@@ -895,7 +895,7 @@ static Token *preprocess2(Token *tok) {
       if (!protocol) error_tok(previous, "invalid url");
 
       printf("(include_url) fetching |%s|\n", url);
-      
+
       char *filename = strdup("/tmp/better-chibicc_web_include-XXXXXX");
       int fd = mkstemp(filename);
       if (fd == -1) {
@@ -903,7 +903,7 @@ static Token *preprocess2(Token *tok) {
         abort();
       }
       puts(filename);
-      
+
       FILE *tmp = fdopen(fd, "rw+");
       if (!tmp) {
         fputs("failed to create tmpfile\n", stderr);
@@ -913,13 +913,13 @@ static Token *preprocess2(Token *tok) {
 
       CURL *curl;
       CURLcode res;
-      
+
       curl = curl_easy_init();
       if (!curl) {
         fputs("failed to initialize libcurl\n", stderr);
         abort();
       }
-    
+
       curl_easy_setopt(curl, CURLOPT_URL, url);
       curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
       curl_easy_setopt(curl, CURLOPT_WRITEDATA, tmp);

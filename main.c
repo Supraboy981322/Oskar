@@ -26,6 +26,7 @@ static bool opt_shared;
 static char *opt_MF;
 static char *opt_MT;
 static char *opt_o;
+static int  opt_consume_args = 0;
 
 static StringArray passed_args;
 
@@ -140,7 +141,7 @@ static void parse_args(int argc, char **argv) {
 
   StringArray idirafter = {};
 
-  for (int i = 1; i < argc; i++) {
+  for (int i = 1; i < argc && !opt_consume_args; i++) {
     if (!strcmp(argv[i], "-###")) {
       opt_hash_hash_hash = true;
       continue;
@@ -160,8 +161,8 @@ static void parse_args(int argc, char **argv) {
     }
 
     if (!strcmp(argv[i], "--")) {
-      assert(false); // TODO: this hangs
-      while (i < argc) strarray_push(&passed_args, argv[++i]);
+      todo("consume args");
+      opt_consume_args = i;
       continue;
     }
 
@@ -923,6 +924,10 @@ int main(int argc, char **argv) {
     run_linker(&ld_args, opt_o ? opt_o : "a.out");
 
   if (opt_run) {
+    if (opt_consume_args) {
+      puts("consume args");
+    }
+
     strarray_push(&passed_args, NULL);
     char** args = malloc(sizeof(char *) * passed_args.len+1);
     args[0] = opt_o ? opt_o : "a.out";
