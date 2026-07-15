@@ -141,7 +141,7 @@ static void parse_args(int argc, char **argv) {
     }
 
     if (!strcmp(argv[i], "--")) {
-      todo("(arg '--')", "consume args", abort);
+      todo("arg '--'", "consume args", abort);
       opts.consume_args = i;
       continue;
     }
