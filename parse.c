@@ -1950,6 +1950,7 @@ static int64_t eval_rval(Node *node, char ***label) {
 static bool is_const_expr(Node *node) {
   add_type(node);
 
+  // TODO: better syntax for cases that only fallthrough
   switch (node->kind) {
   case ND_ADD:
   case ND_SUB:
