@@ -1,0 +1,231 @@
+#+TITLE: todo (more of a wishlist)
+
+* missing features
+** parsing env vars
+  - [/] CPATH
+  - [/] LIBRARY_PATH
+  - [/] LD_LIBRARY_PATH
+** keywords
+  - [ ] unreachable
+    - not a function (more like Zig's =unreachable= keyword, and less like the C macro)
+    - triggers a panic in safe modes
+
+* problems
+  - [ ] fix shared linkage (probably a Nix problem)
+
+* runtime modes
+  - [ ] disabled (almost entirely; nothing that most C compilers don't do by default)
+    - [ ] =unreachable= just prints "reached invalid state" and aborts
+  - [ ] safe
+    - [ ] bounds checking
+    - [ ] unreachable triggers panic
+    - [ ] no stack traces
+  - [ ] debug
+    - [ ] includes safety
+    - [ ] stack trace
+
+* optimization
+  - [ ] decide what to do here
+
+* non-standard features
+** preprocessor
+  - [/] #web_include
+  - [ ] #fetch (=#embed= over the network)
+  - [ ] #exec
+    - [ ] executes external command
+    - [ ] stdout dumped to the file
+    - [ ] stderr streamed to the tty (for logging)
+  - [ ] #run (basically =#exec= but for C code)
+    - [ ] compile, execute, and insert result into file
+    - think of it like a function that /returns/ a value; not like /capturing/ the output of a script (use =#exec= for that)
+  - [ ] #begin_local can be used for large sections of local declarations (see namespaces)
+    - #end_local is used to mark the end of that section
+
+** builtins (prefixed with =@=) (existing C builtins remain without a prefix; ie: this does not put an =@= sign infront of sizeof(...) (for example))
+
+  - [ ] no_op
+    - ignores all arguments passed to it
+    - does nothing
+    - Equivalent to the following macro:
+#+BEGIN_SRC
+    #define NO_OP() do{}while(0)
+#+END_SRC
+    - usage:
+#+BEGIN_SRC
+    @no_op();
+#+END_SRC
+
+  - [ ] todo
+    - takes an enum of type =enum{ EXIT, STAY }= for what it should do
+    - prints the name of the calling function, line in source code, and the provided message
+    - formatted output
+    - usage:
+#+BEGIN_SRC
+    @todo("implement function foo", .EXIT);
+#+END_SRC
+
+  - [ ] ftodo
+    - todo but takes a callback fn
+    - does /not/ take the enum that =@todo(...)= takes
+    - usage:
+#+BEGIN_SRC
+    if (!strcmp(argv[i], "--"))
+      @ftodo("consume args (passed as command)", cleanup);
+#+END_SRC
+
+  - [ ] panic
+    - usage:
+#+BEGIN_SRC c
+    if ((char *)malloc(1) == NULL)
+      @panic("OUT OF MEMORY");
+#+END_SRC
+
+  - [ ] assert
+    - takes a message
+    - usage:
+#+BEGIN_SRC c
+    @assert(foo >= 0 and foo <= 1, "variable out of range");
+#+END_SRC
+
+** misc
+  - [ ] files are modules
+  - [ ] default values for struct fields
+  - [ ] proper modern error handling
+  - [ ] structs can contain functions
+    - functions /cannot/ be declared within a struct =typedef=
+      - for organization purposes: you should use separate modules (structs) containing local functions which are made public via a struct
+
+** syntax
+  - [ ] cases that only fallthrough can just be declared as a comma separated list (like any sane language)
+
+** namespaces
+  - [ ] everything is public (by default)
+    - [ ] header-files are entirely optional
+  - [ ] things can be marked as =local= (only available in the local namespace)
+    - including a file does not merge their namespaces
+      - anything not marked as public is added to the importer's namespace
+  - [ ] certain types have their own namespaces
+    - [ ] enums
+    - [ ] structs
+    - [ ] modules (files)
+  - [ ] inferred enum types
+    - only done if prefixed with a =.=
+    - eg: ~SomeEnum foo = .BAR;~ instead of ~SomeEnum foo = SOME_BAR;~
+
+** keywords
+  - [ ] =local= (see namespaces)
+
+** types
+  - [ ] type info
+    - similar to things that Zig offers under its =@typeInfo(...)= builtin
+    - only baked into resulting binary if used
+    - cannot be used for anything which type info isn't known at comptime
+
+  - [ ] slices
+    - not much to put here
+    - [ ] runtime checking in safe modes
+
+  - [ ] an enum type has its own namespace
+    - this does not, however, prevent the backing integer from colliding
+    - comparing an enum of a different type still compares the backing int only
+      - meaning no typesafety there, you just get multiple namespaces
+
+  - [ ] tagged unions
+    - similar to Zig's tagged unions
+    - [ ] runtime checking in safe modes
+    - [ ] the tag is an enum
+    - [ ] comparision is on the tag
+    - [ ] can be (/explicitly/) reinterpreted into a different field
+      - [ ] doing so would also change the tag
+#+BEGIN_SRC
+        typedef tagged_union {
+          size_t foo;
+          char* bar;
+        } FooUnion;
+        FooUnion me_union = { .foo = (size_t)malloc(4) };
+        printf("%d\n", me_union.foo);
+        me_union = .bar; //this changes the tag
+        memcpy(me_union.bar, "foo", 4);
+        puts(me_union.bar);
+        free(me_union.bar);
+#+END_SRC
+
+  - [ ] errors as values
+    - it's similar to Zig, in more ways than one
+    - essentially a glorified enum
+    - [ ] comparison is identical to comparing an enum
+      - the backing integers never collide, so this is safe (unless they share the same name)
+    - [ ] errors can be grouped into a type (just called an error group)
+      - /all/ errors are placed into a global group (simply named =error=)
+      - behaves like a tagged union; but minus the runtime checks
+      - groups are like (/untagged/) unions
+      - [ ] error groups (intentionally) have no type safety
+        - since errors of the same name have the same backing integer value, the following evaluates to true
+#+BEGIN_SRC
+          typedef error {
+            OUT_OF_MEMORY,
+            SOME_OTHER_ERROR,
+          } FooError;
+          typedef error {
+            OUT_OF_MEMORY,
+            SOME_OTHER_MORE_DIFFERENT_ERROR,
+          } BarError;
+          FooError me_err = .OUT_OF_MEMORY;
+          BarError other_err = .OUT_OF_MEMORY
+          no_op(me_err == other_err && me_err == error.OUT_OF_MEMORY && FooError.OUT_OF_MEMORY == error.OUT_OF_MEMORY);
+#+END_SRC
+        - however, you can enforce strict comparision (ie: group + value) (by explicitly stating it)
+          using the same =typedef=s from above, this now evaluates to false
+#+BEGIN_SRC
+            FooError me_err = .OUT_OF_MEMORY;
+            no_op(me_err == BarError.OUT_OF_MEMORY);
+#+END_SRC
+
+  - [ ] error unions (just a pre-defined tagged union)
+    - this is almost identical to Zig's error unions
+    - it is effectively just this typedef (as plain C) (assuming the function returns an =int= as the non-error state):
+#+BEGIN_SRC
+      typedef enum {
+        INVALID_INPUT,
+        CONNECTION_REFUSED,
+        BAD_RESPONSE,
+      } SomeError;
+      typedef struct {
+        enum { ok, err } tag;
+        union {
+          int ok;
+          SomeError err;
+        } value;
+      } ErrorUnion;
+#+END_SRC
+    - this doesn't really need any explaination, but here I am
+    - the usual =try= keyword is used to bubble-up an error
+      - on error, this immediately returns from the function (with the error) (again, as usual)
+    - errors are "caught" using the =onerr= keyword. Also, some side-notes:
+      - I never understood why you'd =catch= it if you're not also =throw=-ing it
+      - =catch=-ing the error sounds _very_ object oriented
+    - if neither =try= nor =onerr= is used on a function which returns an error union, the type of the resulting value is the error union
+      - a function returning =SomeError!char*= cannot be directly casted to =char*=
+        - you /must/ either access a field in the error union (which's runtime checked in safe modes), or handle it
+    - the error value is accessible under the =.err= field and the non-error value is accessible under the =.ok= field
+      - just like a normal tagged union, comparison can be done on the active tag (if you don't want to use =try= or =onerr=); ie:
+#+BEGIN_SRC
+        MeError!char* alloc(int len) {
+          char* str = malloc(len);
+          if (str) return str;
+          return error.OUT_OF_MEMORY;
+        }
+        int main(void) {
+          MeError!char* me_str = alloc(4);
+          assert(me_str != .err, "allocation failed");
+          memcpy(me_str.ok, "foo", 4);
+          puts(me_str.ok);
+          free(me_str.ok);
+          return 0;
+        }
+#+END_SRC
+
+
+* package/dependency management
+  - [ ] decide how I want to do it
+  - probably would be best to have some vendored libraries
