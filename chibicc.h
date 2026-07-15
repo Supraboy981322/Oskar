@@ -500,7 +500,10 @@ bool file_exists(char *path);
 //some helpers
 //
 
-#define todo(str) do{\
-  fputs(str"\n", stderr);\
-  abort();\
-}while (0)
+#define no_op() do{}while(0)
+
+// TODO: no-op builtin
+#define todo(what, str, fn) do{                \
+  fputs("TODO (" what "): " str "\n", stderr); \
+  fn();                                        \
+} while (0)
