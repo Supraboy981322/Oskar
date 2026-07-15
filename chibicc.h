@@ -451,7 +451,43 @@ void hashmap_test(void);
 // main.c
 //
 
-bool file_exists(char *path);
+typedef enum {
+  FILE_NONE,
+  FILE_C,
+  FILE_ASM,
+  FILE_OBJ,
+  FILE_AR,
+  FILE_DSO,
+} FileType;
+
+typedef enum {
+  LINK_STATIC,
+  LINK_SHARED,
+} Linkage;
+
+// TODO: default initializers
+typedef struct {
+  FileType x;
+  StringArray include;
+  Linkage linkage;
+  int  consume_args;
+  char *MF;
+  char *MT;
+  char *o;
+  bool E;
+  bool M;
+  bool MD;
+  bool MMD;
+  bool run;
+  bool MP;
+  bool S;
+  bool c;
+  bool cc1;
+  bool verbose;
+  bool hash_hash_hash;
+} Opts;
+
+extern Opts opts;
 
 extern StringArray include_paths;
 extern bool opt_fpic;

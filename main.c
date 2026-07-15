@@ -1,32 +1,12 @@
 #include "chibicc.h"
 
-typedef enum {
-  FILE_NONE, FILE_C, FILE_ASM, FILE_OBJ, FILE_AR, FILE_DSO,
-} FileType;
-
 StringArray include_paths;
 bool opt_fcommon = true;
 bool opt_fpic;
 
-static FileType opt_x;
-static StringArray opt_include;
-static bool opt_E;
-static bool opt_M;
-static bool opt_MD;
-static bool opt_MMD;
-static bool opt_run;
-static bool opt_MP;
-static bool opt_S;
-static bool opt_c;
-static bool opt_cc1;
-static bool opt_verbose;
-static bool opt_hash_hash_hash;
-static bool opt_static;
-static bool opt_shared;
-static char *opt_MF;
-static char *opt_MT;
-static char *opt_o;
-static int  opt_consume_args = 0;
+Opts opts = {
+  .consume_args = 0,
+};
 
 static StringArray passed_args;
 
@@ -141,14 +121,14 @@ static void parse_args(int argc, char **argv) {
 
   StringArray idirafter = {};
 
-  for (int i = 1; i < argc && !opt_consume_args; i++) {
+  for (int i = 1; i < argc && !opts.consume_args; i++) {
     if (!strcmp(argv[i], "-###")) {
-      opt_hash_hash_hash = true;
+      opts.hash_hash_hash = true;
       continue;
     }
 
     if (!strcmp(argv[i], "-cc1")) {
-      opt_cc1 = true;
+      opts.cc1 = true;
       continue;
     }
 
@@ -156,33 +136,33 @@ static void parse_args(int argc, char **argv) {
       usage(0);
 
     if (!strcmp(argv[i], "run")) {
-      opt_run = true;
+      opts.run = true;
       continue;
     }
 
     if (!strcmp(argv[i], "--")) {
-      todo("consume args");
-      opt_consume_args = i;
+      todo("(arg '--')", "consume args", abort);
+      opts.consume_args = i;
       continue;
     }
 
     if (!strcmp(argv[i], "-verbose")) {
-      opt_verbose = true;
+      opts.verbose = true;
       continue;
     }
 
     if (!strcmp(argv[i], "-o")) {
-      opt_o = argv[++i];
+      opts.o = argv[++i];
       continue;
     }
 
     if (!strncmp(argv[i], "-o", 2)) {
-      opt_o = argv[i] + 2;
+      opts.o = argv[i] + 2;
       continue;
     }
 
     if (!strcmp(argv[i], "-S")) {
-      opt_S = true;
+      opts.S = true;
       continue;
     }
 
@@ -197,12 +177,12 @@ static void parse_args(int argc, char **argv) {
     }
 
     if (!strcmp(argv[i], "-c")) {
-      opt_c = true;
+      opts.c = true;
       continue;
     }
 
     if (!strcmp(argv[i], "-E")) {
-      opt_E = true;
+      opts.E = true;
       continue;
     }
 
@@ -232,17 +212,17 @@ static void parse_args(int argc, char **argv) {
     }
 
     if (!strcmp(argv[i], "-include")) {
-      strarray_push(&opt_include, argv[++i]);
+      strarray_push(&opts.include, argv[++i]);
       continue;
     }
 
     if (!strcmp(argv[i], "-x")) {
-      opt_x = parse_opt_x(argv[++i]);
+      opts.x = parse_opt_x(argv[++i]);
       continue;
     }
 
     if (!strncmp(argv[i], "-x", 2)) {
-      opt_x = parse_opt_x(argv[i] + 2);
+      opts.x = parse_opt_x(argv[i] + 2);
       continue;
     }
 
@@ -262,43 +242,43 @@ static void parse_args(int argc, char **argv) {
     }
 
     if (!strcmp(argv[i], "-M")) {
-      opt_M = true;
+      opts.M = true;
       continue;
     }
 
     if (!strcmp(argv[i], "-MF")) {
-      opt_MF = argv[++i];
+      opts.MF = argv[++i];
       continue;
     }
 
     if (!strcmp(argv[i], "-MP")) {
-      opt_MP = true;
+      opts.MP = true;
       continue;
     }
 
     if (!strcmp(argv[i], "-MT")) {
-      if (opt_MT == NULL)
-        opt_MT = argv[++i];
+      if (opts.MT == NULL)
+        opts.MT = argv[++i];
       else
-        opt_MT = format("%s %s", opt_MT, argv[++i]);
+        opts.MT = format("%s %s", opts.MT, argv[++i]);
       continue;
     }
 
     if (!strcmp(argv[i], "-MD")) {
-      opt_MD = true;
+      opts.MD = true;
       continue;
     }
 
     if (!strcmp(argv[i], "-MQ")) {
-      if (opt_MT == NULL)
-        opt_MT = quote_makefile(argv[++i]);
+      if (opts.MT == NULL)
+        opts.MT = quote_makefile(argv[++i]);
       else
-        opt_MT = format("%s %s", opt_MT, quote_makefile(argv[++i]));
+        opts.MT = format("%s %s", opts.MT, quote_makefile(argv[++i]));
       continue;
     }
 
     if (!strcmp(argv[i], "-MMD")) {
-      opt_MD = opt_MMD = true;
+      opts.MD = opts.MMD = true;
       continue;
     }
 
@@ -323,13 +303,13 @@ static void parse_args(int argc, char **argv) {
     }
 
     if (!strcmp(argv[i], "-static")) {
-      opt_static = true;
+      opts.linkage = LINK_STATIC;
       strarray_push(&ld_extra_args, "-static");
       continue;
     }
 
     if (!strcmp(argv[i], "-shared")) {
-      opt_shared = true;
+      opts.linkage = LINK_SHARED;
       strarray_push(&ld_extra_args, "-shared");
       continue;
     }
@@ -379,8 +359,8 @@ static void parse_args(int argc, char **argv) {
     error("no input files");
 
   // -E implies that the input is the C macro language.
-  if (opt_E)
-    opt_x = FILE_C;
+  if (opts.E)
+    opts.x = FILE_C;
 }
 
 static FILE *open_file(char *path) {
@@ -426,7 +406,7 @@ static char *create_tmpfile(void) {
 
 static void run_subprocess(char **argv) {
   // If -### is given, dump the subprocess's command line.
-  if (opt_hash_hash_hash) {
+  if (opts.hash_hash_hash) {
     fprintf(stderr, "%s", argv[0]);
     for (int i = 1; argv[i]; i++)
       fprintf(stderr, " %s", argv[i]);
@@ -467,7 +447,7 @@ static void run_cc1(int argc, char **argv, char *input, char *output) {
 
 // Print tokens to stdout. Used for -E.
 static void print_tokens(Token *tok) {
-  FILE *out = open_file(opt_o ? opt_o : "-");
+  FILE *out = open_file(opts.o ? opts.o : "-");
 
   int line = 1;
   for (; tok->kind != TK_EOF; tok = tok->next) {
@@ -496,34 +476,34 @@ static bool in_std_include_path(char *path) {
 // used to automate file dependency management.
 static void print_dependencies(void) {
   char *path;
-  if (opt_MF)
-    path = opt_MF;
-  else if (opt_MD)
-    path = replace_extn(opt_o ? opt_o : base_file, ".d");
-  else if (opt_o)
-    path = opt_o;
+  if (opts.MF)
+    path = opts.MF;
+  else if (opts.MD)
+    path = replace_extn(opts.o ? opts.o : base_file, ".d");
+  else if (opts.o)
+    path = opts.o;
   else
     path = "-";
 
   FILE *out = open_file(path);
-  if (opt_MT)
-    fprintf(out, "%s:", opt_MT);
+  if (opts.MT)
+    fprintf(out, "%s:", opts.MT);
   else
     fprintf(out, "%s:", quote_makefile(replace_extn(base_file, ".o")));
 
   File **files = get_input_files();
 
   for (int i = 0; files[i]; i++) {
-    if (opt_MMD && in_std_include_path(files[i]->name))
+    if (opts.MMD && in_std_include_path(files[i]->name))
       continue;
     fprintf(out, " \\\n  %s", files[i]->name);
   }
 
   fprintf(out, "\n\n");
 
-  if (opt_MP) {
+  if (opts.MP) {
     for (int i = 1; files[i]; i++) {
-      if (opt_MMD && in_std_include_path(files[i]->name))
+      if (opts.MMD && in_std_include_path(files[i]->name))
         continue;
       fprintf(out, "%s:\n\n", quote_makefile(files[i]->name));
     }
@@ -552,8 +532,8 @@ static void cc1(void) {
   Token *tok = NULL;
 
   // Process -include option
-  for (int i = 0; i < opt_include.len; i++) {
-    char *incl = opt_include.data[i];
+  for (int i = 0; i < opts.include.len; i++) {
+    char *incl = opts.include.data[i];
 
     char *path;
     if (file_exists(incl)) {
@@ -574,14 +554,14 @@ static void cc1(void) {
   tok = preprocess(tok);
 
   // If -M or -MD are given, print file dependencies.
-  if (opt_M || opt_MD) {
+  if (opts.M || opts.MD) {
     print_dependencies();
-    if (opt_M)
+    if (opts.M)
       return;
   }
 
   // If -E is given, print out preprocessed C code as a result.
-  if (opt_E) {
+  if (opts.E) {
     print_tokens(tok);
     return;
   }
@@ -660,22 +640,22 @@ char* tryLibPathEnv(char* envvar, char* file) {
 static char *find_libpath(void) {
   char* libpath = getenv("LIBRARY_PATH");
   if (!libpath) {
-    if (opt_verbose)
+    if (opts.verbose)
       fputs("LIBRARY_PATH not set (trying common paths)\n", stderr);
     goto hardcoded;
   }
 
   char* match = tryLibPathEnv(libpath, "crti.o");
   if (!match) {
-    if (opt_verbose)
+    if (opts.verbose)
       fputs("could not find crti.o in LIBRARY PATH (trying common paths)\n", stderr);
     goto hardcoded;
   }
-  if (opt_verbose) puts("found crti.o");
+  if (opts.verbose) puts("found crti.o");
   return match;
 
   hardcoded: {
-    fputs("LIBRARY_PATH not set", stderr);
+    fputs("LIBRARY_PATH not set\n", stderr);
     if (file_exists("/usr/lib/x86_64-linux-gnu/crti.o"))
       return "/usr/lib/x86_64-linux-gnu";
     if (file_exists("/usr/lib64/crti.o"))
@@ -689,11 +669,11 @@ static char *find_gcc_libpath(void) {
   if (ld_path != NULL) {
     char* match = tryLibPathEnv(ld_path, "crtbegin.o");
     if (match) return match;
-    fputs("crtbegin.o not found in LD_LIBRARY_PATH", stderr);
-  } else if (opt_verbose)
-    fputs("LD_LIBRARY_PATH not set", stderr);
+    fputs("crtbegin.o not found in LD_LIBRARY_PATH\n", stderr);
+  } else if (opts.verbose)
+    fputs("LD_LIBRARY_PATH not set\n", stderr);
 
-  if (opt_verbose)
+  if (opts.verbose)
     puts("trying common paths (for crtbegin.o)");
   char* hardcoded = "/usr/lib/gcc/*/crtbegin.o";
   char* path = find_file(hardcoded);
@@ -717,7 +697,7 @@ static void run_linker(StringArray *inputs, char *output) {
   char *libpath = find_libpath();
   char *gcc_libpath = find_gcc_libpath();
 
-  if (opt_shared) {
+  if (opts.linkage == LINK_SHARED) {
     strarray_push(&arr, format("%s/crti.o", libpath));
     strarray_push(&arr, format("%s/crtbeginS.o", gcc_libpath));
   } else {
@@ -749,7 +729,7 @@ static void run_linker(StringArray *inputs, char *output) {
     }
     if (start < f_len)
       strarray_push(&arr, format("-L%s", ldflags+start));
-  } else if (opt_verbose)
+  } else if (opts.verbose)
     fputs("LDFLAGS is not set\n", stderr);
 
   char* library_path = getenv("LIBRARY_PATH");
@@ -765,10 +745,10 @@ static void run_linker(StringArray *inputs, char *output) {
     }
     if (start < strlen(library_path))
       strarray_push(&arr, format("-L%s", library_path+start));
-  } else if (opt_verbose)
+  } else if (opts.verbose)
     fputs("LIBRARY_PATH is not set\n", stderr);
 
-  if (!opt_static) {
+  if (opts.linkage != LINK_STATIC) {
     strarray_push(&arr, "-dynamic-linker");
     strarray_push(&arr, "/lib64/ld-linux-x86-64.so.2");
   }
@@ -779,7 +759,7 @@ static void run_linker(StringArray *inputs, char *output) {
   for (int i = 0; i < inputs->len; i++)
     strarray_push(&arr, inputs->data[i]);
 
-  if (opt_static) {
+  if (opts.linkage == LINK_STATIC) {
     strarray_push(&arr, "--start-group");
     strarray_push(&arr, "-lgcc");
     strarray_push(&arr, "-lgcc_eh");
@@ -793,7 +773,7 @@ static void run_linker(StringArray *inputs, char *output) {
     strarray_push(&arr, "--no-as-needed");
   }
 
-  if (opt_shared)
+  if (opts.linkage == LINK_SHARED)
     strarray_push(&arr, format("%s/crtendS.o", gcc_libpath));
   else
     strarray_push(&arr, format("%s/crtend.o", gcc_libpath));
@@ -801,7 +781,7 @@ static void run_linker(StringArray *inputs, char *output) {
   strarray_push(&arr, format("%s/crtn.o", libpath));
   strarray_push(&arr, NULL);
 
-  if (opt_verbose) {
+  if (opts.verbose) {
     puts("about to run:");
     for (int i = 0; i < arr.len; i++) if (arr.data[i])
       printf("\t%s %c\n", arr.data[i], (arr.data[i+1]) ? '\\' : ' ');
@@ -815,8 +795,8 @@ static void run_linker(StringArray *inputs, char *output) {
 }
 
 static FileType get_file_type(char *filename) {
-  if (opt_x != FILE_NONE)
-    return opt_x;
+  if (opts.x != FILE_NONE)
+    return opts.x;
 
   if (endswith(filename, ".a"))
     return FILE_AR;
@@ -837,13 +817,13 @@ int main(int argc, char **argv) {
   init_macros();
   parse_args(argc, argv);
 
-  if (opt_cc1) {
+  if (opts.cc1) {
     add_default_include_paths(argv[0]);
     cc1();
     return 0;
   }
 
-  if (input_paths.len > 1 && opt_o && (opt_c || opt_S | opt_E))
+  if (input_paths.len > 1 && opts.o && (opts.c || opts.S | opts.E))
     error("cannot specify '-o' with '-c,' '-S' or '-E' with multiple files");
 
   StringArray ld_args = {};
@@ -867,9 +847,9 @@ int main(int argc, char **argv) {
     }
 
     char *output;
-    if (opt_o)
-      output = opt_o;
-    else if (opt_S)
+    if (opts.o)
+      output = opts.o;
+    else if (opts.S)
       output = replace_extn(input, ".s");
     else
       output = replace_extn(input, ".o");
@@ -884,7 +864,7 @@ int main(int argc, char **argv) {
 
     // Handle .s
     if (type == FILE_ASM) {
-      if (!opt_S)
+      if (!opts.S)
         assemble(input, output);
       continue;
     }
@@ -892,19 +872,19 @@ int main(int argc, char **argv) {
     assert(type == FILE_C);
 
     // Just preprocess
-    if (opt_E || opt_M) {
+    if (opts.E || opts.M) {
       run_cc1(argc, argv, input, NULL);
       continue;
     }
 
     // Compile
-    if (opt_S) {
+    if (opts.S) {
       run_cc1(argc, argv, input, output);
       continue;
     }
 
     // Compile and assemble
-    if (opt_c) {
+    if (opts.c) {
       char *tmp = create_tmpfile();
       run_cc1(argc, argv, input, tmp);
       assemble(tmp, output);
@@ -921,16 +901,16 @@ int main(int argc, char **argv) {
   }
 
   if (ld_args.len > 0)
-    run_linker(&ld_args, opt_o ? opt_o : "a.out");
+    run_linker(&ld_args, opts.o ? opts.o : "a.out");
 
-  if (opt_run) {
-    if (opt_consume_args) {
+  if (opts.run) {
+    if (opts.consume_args) {
       puts("consume args");
     }
 
     strarray_push(&passed_args, NULL);
     char** args = malloc(sizeof(char *) * passed_args.len+1);
-    args[0] = opt_o ? opt_o : "a.out";
+    args[0] = opts.o ? opts.o : "a.out";
     for (int i = 0; i < passed_args.len; i++)
       args[i+1] = passed_args.data[i];
 
@@ -954,7 +934,7 @@ int main(int argc, char **argv) {
       execvp(args[0], args);
       fprintf(stderr, "exec failed: %s: %s\n", args[0], strerror(errno));
       free(args);
-      remove(opt_o ? opt_o : "a.out");
+      remove(opts.o ? opts.o : "a.out");
       _exit(1);
     }
 
