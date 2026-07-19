@@ -111,6 +111,7 @@ static char *quote_makefile(char *s) {
   return buf;
 }
 
+// TODO: refactor arg parsing; this is kind-of dumb
 static void parse_args(int argc, char **argv) {
   // Make sure that all command line options that take an argument
   // have an argument.

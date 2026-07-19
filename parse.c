@@ -97,6 +97,7 @@ static Obj *current_fn;
 // Lists of all goto statements and labels in the curent function.
 static Node *gotos;
 static Node *labels;
+static Node *defers;
 
 // Current "goto" and "continue" jump targets.
 static char *brk_label;
@@ -1776,6 +1777,16 @@ static Node *stmt(Token **rest, Token *tok) {
     return node;
   }
 
+  if (equal(tok, "defer")) {
+    Node *node = new_node(ND_LABEL, tok);
+    node->unique_label = new_unique_name();
+    node->body = stmt(rest, tok->next);
+    node->goto_next = defers;
+    defers = node;
+    *tok = *(*rest++)->next;
+    return stmt(rest, tok);
+  }
+
   if (equal(tok, "break")) {
     if (!brk_label)
       error_tok(tok, "stray break");
@@ -1848,6 +1859,11 @@ static Node *compound_stmt(Token **rest, Token *tok) {
   leave_scope();
 
   node->body = head.next;
+  if (defers) {
+    cur = cur->next = defers->body;
+    defers = defers->goto_next;
+  }
+
   *rest = tok->next;
   return node;
 }

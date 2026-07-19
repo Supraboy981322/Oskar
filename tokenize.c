@@ -170,7 +170,8 @@ static bool is_keyword(Token *tok) {
       "__attribute__",
 
       //added keywords
-      "error"
+      "error",
+      "defer",
     };
 
     for (uint64_t i = 0; i < sizeof(kw) / sizeof(*kw); i++)

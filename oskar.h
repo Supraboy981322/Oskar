@@ -224,6 +224,9 @@ typedef enum {
   ND_ASM,       // "asm"
   ND_CAS,       // Atomic compare-and-swap
   ND_EXCH,      // Atomic exchange
+  
+  //added
+  ND_DEFER,
 } NodeKind;
 
 // AST node type
