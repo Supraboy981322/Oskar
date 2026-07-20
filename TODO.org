@@ -114,6 +114,9 @@
 
 ** keywords
   - [ ] =local= (see namespaces)
+  - [-] =defer=
+    - =goto= bypasses =defer=
+    - =defer= block is ran on =return=, =continue=, =break=, and end of scope
 
 ** types
   - [ ] type info
